@@ -1,11 +1,17 @@
 import io
+import os
+import json
 import argparse
 import asyncio
 import numpy as np
 import ffmpeg
+from pathlib import Path
 from time import time, sleep
+from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
+from websockets.asyncio.client import connect
+from starlette.websockets import WebSocketState
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +23,12 @@ import math
 import logging
 from datetime import timedelta
 import traceback
+
+env_path = Path(".") / ".env"
+load_dotenv(dotenv_path=env_path)
+
+EXT_SERVER_WEBSOCKET_URL = os.getenv("EXT_SERVER_WEBSOCKET_URL", "ws://localhost:8001/receive")
+
 
 def format_time(seconds):
     return str(timedelta(seconds=int(seconds)))
@@ -208,6 +220,21 @@ async def start_ffmpeg_decoder():
     )
     return process
 
+async def forward_to_ext_server(shared_state, client_id, full_transcription, metadata):
+    """Function to send messages to server_2."""
+    try:
+        async with connect(f"{EXT_SERVER_WEBSOCKET_URL}/{client_id}") as websocket_primer:
+            await websocket_primer.send(
+                json.dumps({
+                    "websocket_id": metadata.get("websocket_id", ""),
+                    "transcription": full_transcription,
+                    "user_id": metadata.get("user_id", ""),
+                    "conversation_id": metadata.get("conversation_id", "")
+                })
+            )
+    except Exception as e:
+        logger.error(f"Failed to send message to {EXT_SERVER_WEBSOCKET_URL}: {e}")
+
 async def transcription_processor(shared_state, pcm_queue, online):
     full_transcription = ""
     sep = online.asr.sep
@@ -355,7 +382,13 @@ async def results_formatter(shared_state, websocket):
             
             if response_content != shared_state.last_response_content:
                 if lines or buffer_transcription or buffer_diarization:
-                    await websocket.send_json(response)
+                    try:
+                        if websocket.client_state == WebSocketState.CONNECTED:
+                            await websocket.send_json(response)
+                    except WebSocketDisconnect:
+                        logger.warning("External Web Server WebSocket disconnected.")
+                    except Exception as e:
+                        logger.error(f'Error sending live transcriptipon to client: {e}')
                     shared_state.last_response_content = response_content
             
             # Add a small delay to avoid overwhelming the client
@@ -372,8 +405,8 @@ async def results_formatter(shared_state, websocket):
 async def get():
     return HTMLResponse(html)
 
-@app.websocket("/asr")
-async def websocket_endpoint(websocket: WebSocket):
+@app.websocket("/asr/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await websocket.accept()
     logger.info("WebSocket connection opened.")
 
@@ -474,21 +507,50 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("Exiting ffmpeg_stdout_reader...")
 
     stdout_reader_task = asyncio.create_task(ffmpeg_stdout_reader())
-    tasks.append(stdout_reader_task)    
+    tasks.append(stdout_reader_task)
+    
+    metadata = {}
+    
+    def parse_websocket_data(input_data):
+        try:
+            # Split by the delimiter
+            parts = input_data.split(b'\r\n\r\n', 1)
+            if len(parts) == 2:
+                metadata_bytes, audio_bytes = parts
+                metadata = json.loads(metadata_bytes.decode('utf-8'))
+                logger.info(f"Received audio chunk with metadata: {metadata}")
+                return audio_bytes, metadata
+            else:
+                logger.error("Received malformed message")
+        except Exception as e:
+            logger.error(f"Error parsing message: {e}")
+
     try:
         while True:
-            # Receive incoming WebM audio chunks from the client
-            message = await websocket.receive_bytes()
-            try:
-                ffmpeg_process.stdin.write(message)
-                ffmpeg_process.stdin.flush()
-            except (BrokenPipeError, AttributeError) as e:
-                logger.warning(f"Error writing to FFmpeg: {e}. Restarting...")
-                await restart_ffmpeg()
-                ffmpeg_process.stdin.write(message)
-                ffmpeg_process.stdin.flush()
+            if websocket.client_state == WebSocketState.CONNECTED:
+                socket_message = await websocket.receive_bytes()
+                message, metadata = parse_websocket_data(socket_message)
+
+                try:
+                    ffmpeg_process.stdin.write(message)
+                    ffmpeg_process.stdin.flush()
+                except (BrokenPipeError, AttributeError) as e:
+                    logger.warning(f"Error writing to FFmpeg: {e}. Restarting...")
+                    await restart_ffmpeg()
+                    ffmpeg_process.stdin.write(message)
+                    ffmpeg_process.stdin.flush()          
     except WebSocketDisconnect:
         logger.warning("WebSocket disconnected.")
+        try:
+            full_transcription = shared_state.full_transcription
+            logger.info(f"Final transcription before disconnect: {full_transcription}, {metadata}")
+            asyncio.create_task(forward_to_ext_server(shared_state, client_id, full_transcription, metadata))
+        except Exception as e:
+            logger.warning(f"Error sending transcription to external server: {e}")
+            raise
+    except Exception as e:
+        logger.error(f"An error occurred in websocket_endpoint: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
     finally:
         for task in tasks:
             task.cancel()

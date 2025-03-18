@@ -279,7 +279,7 @@
             </div>
             <div>
                 <label for="websocketInput">WebSocket URL:</label>
-                <input id="websocketInput" type="text" value="ws://localhost:8000/asr" />
+                <input id="websocketInput" type="text" value="ws://localhost:8001/asr" />
             </div>
         </div>
     </div>
@@ -294,7 +294,7 @@
         let websocket = null;
         let recorder = null;
         let chunkDuration = 1000;
-        let websocketUrl = "ws://localhost:8000/asr";
+        let websocketUrl = "ws://localhost:8001/asr";
         let userClosing = false;
         let startTime = null;
         let timerInterval = null;

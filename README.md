@@ -8,6 +8,13 @@ This project is based on [Whisper Streaming](https://github.com/ufal/whisper_str
   <img src="web/demo.png" alt="Demo Screenshot" width="730">
 </p>
 
+### Custom Implementation
+#### Building Custom Implementation
+Build the image with `docker build -t yourusername/whisper-streaming-server .`
+
+#### Using Custom Implementation
+To use the Custom implementation from `custom-main` branch, use the docker-compose file in your own project.
+
 ### Differences from [Whisper Streaming](https://github.com/ufal/whisper_streaming)
 
 #### ⚙️ **Core Improvements**  
@@ -93,7 +100,7 @@ This project is based on [Whisper Streaming](https://github.com/ufal/whisper_str
 3. **Run the FastAPI Server**:
 
     ```bash
-    python whisper_fastapi_online_server.py --host 0.0.0.0 --port 8000
+    python whisper_fastapi_online_server.py --host 0.0.0.0 --port 8001
     ```
 
     **Parameters**
@@ -125,7 +132,7 @@ This project is based on [Whisper Streaming](https://github.com/ufal/whisper_str
 5. **Open the Provided HTML**:
 
     - By default, the server root endpoint `/` serves a simple `live_transcription.html` page.  
-    - Open your browser at `http://localhost:8000` (or replace `localhost` and `8000` with whatever you specified).  
+    - Open your browser at `http://localhost:8001` (or replace `localhost` and `8001` with whatever you specified).  
     - The page uses vanilla JavaScript and the WebSocket API to capture your microphone and stream audio to the server in real time.
 
 ### How the Live Interface Works
