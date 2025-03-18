@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
+import os
 import sys
 import numpy as np
 import librosa
 from functools import lru_cache
 import time
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from .backends import FasterWhisperASR, MLXWhisper, WhisperTimestampedASR, OpenaiApiASR
 from .online_asr import OnlineASRProcessor, VACOnlineASRProcessor
 
+env_path = Path(".") / ".env"
+load_dotenv(dotenv_path=env_path)
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +82,7 @@ def add_shared_args(parser):
     parser.add_argument(
         "--model",
         type=str,
-        default="tiny",
+        default=os.getenv("WHISPER_MODEL", "tiny"),
         choices="tiny.en,tiny,base.en,base,small.en,small,medium.en,medium,large-v1,large-v2,large-v3,large,large-v3-turbo".split(
             ","
         ),
@@ -112,7 +117,7 @@ def add_shared_args(parser):
     parser.add_argument(
         "--backend",
         type=str,
-        default="faster-whisper",
+        default=os.getenv("WHISPER_BACKEND", "faster-whisper"),
         choices=["faster-whisper", "whisper_timestamped", "mlx-whisper", "openai-api"],
         help="Load only this backend for Whisper processing.",
     )
