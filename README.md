@@ -10,7 +10,8 @@ This project is based on [Whisper Streaming](https://github.com/ufal/whisper_str
 
 ### Custom Implementation
 #### Building Custom Implementation
-Build the image with `docker build -t yourusername/whisper-streaming-server .`
+Build the image with `docker build --platform linux/amd64 -t yourusername/whisper-streaming-server .`
+Remove `--platform linux/amd64` if not on that linux architecture
 
 #### Using Custom Implementation
 To use the Custom implementation from `custom-main` branch, use the docker-compose file in your own project.
